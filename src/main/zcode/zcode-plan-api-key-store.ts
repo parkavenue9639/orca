@@ -76,6 +76,9 @@ export function saveZcodePlanApiKey(key: string): void {
   if (!trimmed) {
     throw new Error('GLM Coding Plan API key is required')
   }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new Error('GLM Coding Plan API key must be a single line')
+  }
   if (safeStorage.isEncryptionAvailable()) {
     writeSecureFile(
       getZcodePlanApiKeyPath(),
@@ -87,10 +90,16 @@ export function saveZcodePlanApiKey(key: string): void {
   console.warn(
     '[zcode] safeStorage encryption unavailable — storing GLM Coding Plan API key in plaintext'
   )
-  writeSecureFile(
+  const wroteRestricted = writeSecureFile(
     getZcodePlanApiKeyPath(),
     encodeApiKeyEnvelope('plaintext', Buffer.from(trimmed, 'utf8'))
   )
+  // Why: an unrestricted plaintext credential must never be reported as saved;
+  // writeSecureFile has already published the file by the time it returns false.
+  if (!wroteRestricted) {
+    rmSync(getZcodePlanApiKeyPath(), { force: true })
+    throw new Error('GLM Coding Plan API key could not be stored securely on this device')
+  }
   cachedZcodePlanApiKey = trimmed
 }
 

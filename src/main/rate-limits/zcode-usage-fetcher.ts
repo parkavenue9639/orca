@@ -230,6 +230,11 @@ export async function fetchZcodeRateLimits(
   const planCredentials = options.planCredential
     ? readPlanCredentials(options.planCredential)
     : null
+  if (!planCredentials && options.planCredential) {
+    // Why: a saved-but-unusable key must surface as its own error; silently
+    // falling back to the CLI config would show a different account's quota.
+    return failed('The saved GLM Coding Plan API key is unusable', 'parse', '')
+  }
   const credentials = planCredentials ?? readCredentials(configPath)
   if (!credentials) {
     return unavailable('ZCode Coding Plan credentials are not configured')

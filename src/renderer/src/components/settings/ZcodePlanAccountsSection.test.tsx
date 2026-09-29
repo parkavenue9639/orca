@@ -154,4 +154,31 @@ describe('ZcodePlanAccountsSection', () => {
     expect(screen.getByText('73%')).toBeInTheDocument()
     expect(screen.getByText('Plan: max')).toBeInTheDocument()
   })
+
+  it('renders the reset countdown once, not doubled', async () => {
+    mocks.getStatus.mockResolvedValue({ apiKeyConfigured: true, zcodeCliConfigured: false })
+    mocks.zcodeUsage.mockReturnValue({
+      provider: 'zcode',
+      status: 'ok',
+      error: null,
+      planType: null,
+      // Why 47.5 minutes: the floor survives a minute-boundary crossing between
+      // mock setup and render, so the assertion stays deterministic.
+      session: {
+        usedPercent: 42,
+        windowMinutes: 300,
+        resetsAt: Date.now() + 47 * 60_000 + 30_000,
+        resetDescription: null
+      },
+      weekly: null,
+      monthly: null,
+      updatedAt: Date.now()
+    })
+
+    render(<ZcodePlanAccountsSection />)
+
+    expect(await screen.findByText('42%')).toBeInTheDocument()
+    expect(screen.getByText(/5 hours — resets in 47m/)).toBeInTheDocument()
+    expect(screen.queryByText(/Resets in Resets/)).not.toBeInTheDocument()
+  })
 })

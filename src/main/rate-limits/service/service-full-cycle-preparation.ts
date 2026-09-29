@@ -122,7 +122,7 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     // Why digest, not the key: this string only has to change when the credential does.
     const currentZcodeConfigHash = zcodePlanApiKey
       ? `${zcodePlanConfigResult.config.site}|${createHash('sha256').update(zcodePlanApiKey).digest('hex')}`
-      : ''
+      : (zcodePlanConfigResult.error ?? '')
     const zcodeConfigChanged = currentZcodeConfigHash !== this.lastZcodeConfigHash
     if (zcodeConfigChanged) {
       this.lastZcodeConfigHash = currentZcodeConfigHash

@@ -1,5 +1,5 @@
 import { translate } from '@/i18n/i18n'
-import { formatResetCountdown } from '../../../../shared/rate-limit-reset-format'
+import { formatResetDuration } from '../../../../shared/rate-limit-reset-format'
 import type { ProviderRateLimits, RateLimitWindow } from '../../../../shared/rate-limit-types'
 import { Badge } from '../ui/badge'
 
@@ -25,7 +25,7 @@ function formatWindowReset(window: RateLimitWindow, now: number): string | null 
     return null
   }
   const remaining = window.resetsAt - now
-  return remaining > 0 ? formatResetCountdown(remaining) : null
+  return remaining > 0 ? formatResetDuration(remaining) : null
 }
 
 // Why: a window only renders when its data survived the fetcher's mapping, so

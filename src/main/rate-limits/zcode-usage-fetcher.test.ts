@@ -350,31 +350,24 @@ describe('fetchZcodeRateLimits', () => {
       planCredential: { apiKey: 'key', baseUrl: 'https://evil.example.com' }
     })
 
-    expect(result.status).toBe('unavailable')
+    expect(result.status).toBe('error')
+    expect(result.error).toBe('The saved GLM Coding Plan API key is unusable')
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('falls back to the CLI config when the plan credential is malformed', async () => {
+  it('reports an unusable plan credential instead of switching to the CLI config', async () => {
     writeConfig()
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: { limits: [{ type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 10 }] }
-        })
-      )
-    )
+    vi.mocked(fetch).mockResolvedValue(new Response('{}'))
 
     const result = await fetchZcodeRateLimits({
       configPath,
       planCredential: { apiKey: 'bad\r\nkey', baseUrl: 'https://api.z.ai' }
     })
 
-    expect(result.status).toBe('ok')
-    expect(String(vi.mocked(fetch).mock.calls[0][0])).toBe(
-      'https://open.bigmodel.cn/api/monitor/usage/quota/limit'
-    )
-    expect(result.usageMetadata?.credentialSource).toBe(configPath)
+    expect(result.status).toBe('error')
+    expect(result.error).toBe('The saved GLM Coding Plan API key is unusable')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(result.usageMetadata?.credentialSource).toBeUndefined()
   })
 })
 

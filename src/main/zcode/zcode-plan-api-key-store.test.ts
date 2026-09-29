@@ -54,6 +54,7 @@ describe('zcode-plan-api-key-store', () => {
     rmSyncMock.mockReset()
     hardenExistingSecureFileMock.mockReset()
     writeSecureFileMock.mockReset()
+    writeSecureFileMock.mockReturnValue(true)
     safeStorageMock.isEncryptionAvailable.mockReset()
     safeStorageMock.encryptString.mockReset()
     safeStorageMock.decryptString.mockReset()
@@ -113,6 +114,27 @@ describe('zcode-plan-api-key-store', () => {
 
     expect(() => store.saveZcodePlanApiKey('   ')).toThrow('GLM Coding Plan API key is required')
     expect(writeSecureFileMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a key with an interior newline instead of saving it', async () => {
+    const store = await loadStore()
+
+    expect(() => store.saveZcodePlanApiKey('glm\r\nsecret')).toThrow('must be a single line')
+    expect(writeSecureFileMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses to keep an unrestricted plaintext key when hardening fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
+    writeSecureFileMock.mockReturnValue(false)
+    existsSyncMock.mockReturnValue(false)
+    const store = await loadStore()
+
+    expect(() => store.saveZcodePlanApiKey('glm-secret')).toThrow(
+      'could not be stored securely on this device'
+    )
+    expect(rmSyncMock).toHaveBeenCalledWith(storePath, { force: true })
+    warn.mockRestore()
   })
 
   it('refuses to decrypt an encrypted envelope once safeStorage becomes unavailable', async () => {
