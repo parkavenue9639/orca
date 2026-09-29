@@ -137,6 +137,26 @@ describe('zcode-plan-api-key-store', () => {
     warn.mockRestore()
   })
 
+  it('restores the previous envelope when a plaintext replacement cannot be restricted', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
+    const previous = Buffer.from(envelope('encrypted', 'old-key'))
+    existsSyncMock.mockReturnValue(true)
+    readFileSyncMock.mockReturnValue(previous)
+    writeSecureFileMock.mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const store = await loadStore()
+
+    expect(() => store.saveZcodePlanApiKey('new-key')).toThrow(
+      'could not be stored securely on this device'
+    )
+    // First write publishes the unrestricted replacement; the second restores
+    // the previous envelope so the user's old key survives the failed replace.
+    expect(writeSecureFileMock).toHaveBeenCalledTimes(2)
+    expect(writeSecureFileMock).toHaveBeenLastCalledWith(storePath, previous.toString('utf8'))
+    expect(rmSyncMock).not.toHaveBeenCalledWith(storePath, expect.anything())
+    warn.mockRestore()
+  })
+
   it('refuses to decrypt an encrypted envelope once safeStorage becomes unavailable', async () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
     existsSyncMock.mockReturnValue(true)

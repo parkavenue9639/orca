@@ -90,14 +90,35 @@ export function saveZcodePlanApiKey(key: string): void {
   console.warn(
     '[zcode] safeStorage encryption unavailable — storing GLM Coding Plan API key in plaintext'
   )
+  const keyPath = getZcodePlanApiKeyPath()
+  // Why: capture the previous envelope — writeSecureFile has already replaced
+  // the file by the time it reports that restriction failed, and deleting the
+  // result must not take the user's previous working key with it.
+  let previousEnvelope: Buffer | null = null
+  if (existsSync(keyPath)) {
+    try {
+      previousEnvelope = readFileSync(keyPath)
+    } catch {
+      previousEnvelope = null
+    }
+  }
   const wroteRestricted = writeSecureFile(
-    getZcodePlanApiKeyPath(),
+    keyPath,
     encodeApiKeyEnvelope('plaintext', Buffer.from(trimmed, 'utf8'))
   )
-  // Why: an unrestricted plaintext credential must never be reported as saved;
-  // writeSecureFile has already published the file by the time it returns false.
+  // Why: an unrestricted plaintext credential must never be reported as saved.
   if (!wroteRestricted) {
-    rmSync(getZcodePlanApiKeyPath(), { force: true })
+    if (!previousEnvelope) {
+      rmSync(keyPath, { force: true })
+    } else {
+      try {
+        writeSecureFile(keyPath, previousEnvelope.toString('utf8'))
+      } catch {
+        // Why: restriction is failing device-wide; the restored bytes keep the
+        // previous credential available instead of deleting it, and the thrown
+        // save error still tells the user the store is not secure.
+      }
+    }
     throw new Error('GLM Coding Plan API key could not be stored securely on this device')
   }
   cachedZcodePlanApiKey = trimmed
