@@ -26,6 +26,14 @@ type ZcodeUsageCredentials = {
   authProvenance: string
 }
 
+/** A GLM Coding Plan key saved through Orca's AI Provider Accounts; takes priority over the ZCode CLI config. */
+export type ZcodePlanCredential = {
+  apiKey: string
+  baseUrl: string
+}
+
+export const ZCODE_PLAN_CREDENTIAL_SOURCE = 'orca-plan'
+
 // Why readers and not casts: both JSON sources are outside our control — a user-edited
 // config file and a remote response — so their shape is a guess until something checks it.
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -123,6 +131,38 @@ function readCredentials(configPath: string): ZcodeUsageCredentials | null {
   }
 }
 
+function readPlanCredentials(plan: ZcodePlanCredential): ZcodeUsageCredentials | null {
+  const apiKey = plan.apiKey.trim()
+  if (!apiKey || /[\r\n]/.test(apiKey)) {
+    return null
+  }
+  try {
+    const parsed = new URL(plan.baseUrl)
+    if (
+      parsed.protocol !== 'https:' ||
+      !SUPPORTED_HOSTS.has(parsed.hostname) ||
+      (parsed.port !== '' && parsed.port !== '443')
+    ) {
+      return null
+    }
+    return {
+      apiKey,
+      quotaUrl: `${parsed.origin}/api/monitor/usage/quota/limit`,
+      authProvenance: createHmac('sha256', CREDENTIAL_IDENTITY_KEY)
+        .update(JSON.stringify([ZCODE_PLAN_CREDENTIAL_SOURCE, parsed.origin, apiKey]))
+        .digest('hex')
+    }
+  } catch {
+    return null
+  }
+}
+
+export function hasZcodeCliPlanCredentials(
+  configPath = join(homedir(), '.zcode', 'cli', 'config.json')
+): boolean {
+  return readCredentials(configPath) !== null
+}
+
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
@@ -182,14 +222,19 @@ function asWindow(limit: QuotaLimit | undefined): RateLimitWindow | null {
 export async function fetchZcodeRateLimits(
   options: {
     configPath?: string
+    planCredential?: ZcodePlanCredential | null
     signal?: AbortSignal
   } = {}
 ): Promise<ProviderRateLimits> {
   const configPath = options.configPath ?? join(homedir(), '.zcode', 'cli', 'config.json')
-  const credentials = readCredentials(configPath)
+  const planCredentials = options.planCredential
+    ? readPlanCredentials(options.planCredential)
+    : null
+  const credentials = planCredentials ?? readCredentials(configPath)
   if (!credentials) {
     return unavailable('ZCode Coding Plan credentials are not configured')
   }
+  const credentialSource = planCredentials ? ZCODE_PLAN_CREDENTIAL_SOURCE : configPath
 
   let response: Response
   try {
@@ -270,7 +315,7 @@ export async function fetchZcodeRateLimits(
     status: 'ok',
     usageMetadata: {
       source: 'web',
-      credentialSource: configPath,
+      credentialSource,
       authProvenance: credentials.authProvenance
     }
   }

@@ -81,6 +81,18 @@ export type MinimaxCredentialsApi = {
   clearApiKey: () => Promise<{ apiKeyConfigured: boolean }>
 }
 
+export type ZcodePlanCredentialsApi = {
+  // Why: the GLM Coding Plan key lives in its own safeStorage file and the
+  // ZCode CLI's config is read-only, so the status reports both sources'
+  // presence; neither credential value ever crosses the IPC boundary.
+  getStatus: () => Promise<{
+    apiKeyConfigured: boolean
+    zcodeCliConfigured: boolean
+  }>
+  saveApiKey: (key: string) => Promise<{ apiKeyConfigured: boolean }>
+  clearApiKey: () => Promise<{ apiKeyConfigured: boolean }>
+}
+
 export type CodexConfigSyncApi = {
   status: () => Promise<CodexConfigSyncStatus>
 }

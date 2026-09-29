@@ -78,6 +78,7 @@ function usageSettings(overrides: Partial<UsageProviderSettings> = {}): UsagePro
     opencodeGoApiKeyConfigured: false,
     grokAuthConfigured: false,
     cursorAuthConfigured: false,
+    zcodePlanApiKeyConfigured: false,
     ...overrides
   }
 }

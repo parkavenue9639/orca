@@ -6,6 +6,7 @@ import { readGrokAuthSession } from '../grok-auth'
 import { fetchCursorRateLimits } from '../cursor-fetcher'
 import { readCursorAuthSession } from '../cursor-auth'
 import { fetchZcodeRateLimits } from '../zcode-usage-fetcher'
+import { ZCODE_PLAN_SITE_BASE_URLS } from '../../../shared/zcode-plan-sites'
 import { fetchMiniMaxRateLimits } from '../minimax/minimax-fetcher'
 import { createHash } from 'node:crypto'
 import { fetchOpenCodeGoUsage } from '../opencode-go-usage-source-selection'
@@ -34,6 +35,8 @@ export type FetchAllCyclePrepared = {
   opencodeGeneration: number
   miniMaxConfigChanged: boolean
   miniMaxGeneration: number
+  zcodeConfigChanged: boolean
+  zcodeGeneration: number
   claudeFetchGated: boolean
   results: [
     PromiseSettledResult<ProviderRateLimits>,
@@ -114,6 +117,25 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     }
     const miniMaxGeneration = this.minimaxFetchGeneration
 
+    const zcodePlanConfigResult = this.resolveZcodePlanConfig()
+    const zcodePlanApiKey = zcodePlanConfigResult.config.apiKey
+    // Why digest, not the key: this string only has to change when the credential does.
+    const currentZcodeConfigHash = zcodePlanApiKey
+      ? `${zcodePlanConfigResult.config.site}|${createHash('sha256').update(zcodePlanApiKey).digest('hex')}`
+      : ''
+    const zcodeConfigChanged = currentZcodeConfigHash !== this.lastZcodeConfigHash
+    if (zcodeConfigChanged) {
+      this.lastZcodeConfigHash = currentZcodeConfigHash
+      this.zcodeFetchGeneration += 1
+    }
+    const zcodeGeneration = this.zcodeFetchGeneration
+    const zcodePlanCredential = zcodePlanApiKey
+      ? {
+          apiKey: zcodePlanApiKey,
+          baseUrl: ZCODE_PLAN_SITE_BASE_URLS[zcodePlanConfigResult.config.site]
+        }
+      : null
+
     // Mark all providers fetching while keeping previous data visible (Codex is cleared separately on account change).
     this.updateState({
       ...previousState,
@@ -133,7 +155,9 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
         : this.withFetchingStatus(previousState.minimax, 'minimax'),
       grok: this.withFetchingStatus(previousState.grok, 'grok'),
       cursor: this.withFetchingStatus(previousState.cursor, 'cursor'),
-      zcode: this.withFetchingStatus(previousState.zcode, 'zcode')
+      zcode: zcodeConfigChanged
+        ? this.withFetchingStatus(null, 'zcode')
+        : this.withFetchingStatus(previousState.zcode, 'zcode')
     })
 
     // Why: the Cursor probe reads the macOS Keychain, so it is awaited inside the
@@ -148,7 +172,11 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
         (reason) => ({ status: 'rejected', reason }) as const
       )
 
-    const zcodeResultPromise = fetchZcodeRateLimits({ signal }).then(
+    const zcodeResultPromise = (
+      zcodePlanConfigResult.error
+        ? Promise.resolve(this.getZcodePlanCredentialError(zcodePlanConfigResult.error))
+        : fetchZcodeRateLimits({ signal, planCredential: zcodePlanCredential })
+    ).then(
       (value) => ({ status: 'fulfilled', value }) as const,
       (reason) => ({ status: 'rejected', reason }) as const
     )
@@ -229,6 +257,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
       opencodeGeneration,
       miniMaxConfigChanged,
       miniMaxGeneration,
+      zcodeConfigChanged,
+      zcodeGeneration,
       claudeFetchGated,
       results: [
         claudeResult,
